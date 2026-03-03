@@ -275,6 +275,12 @@ jobs:
           tag_name: v${{ needs.check.outputs.version }}
           token: ${{ secrets.GH_TOKEN }}
 
+  on-release-success:
+    if: success() && !cancelled() && needs.check.outputs.should_build == 'true'
+    name: Release success
+    needs: [check, release]
+    runs-on: ubuntu-latest
+    steps:
       - name: Send Slack notification
         uses: slackapi/slack-github-action@v2.0.0
         with:
@@ -282,7 +288,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             {
-              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
+              "channel": "${{ secrets.SLACK_CI_CHANNEL_ID }}",
               "text": "New RocksDB prebuild: v${{ needs.check.outputs.version }}",
               "blocks": [
                 {
@@ -293,11 +299,21 @@ jobs:
                   }
                 },
                 {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "https://github.com/harperdb/rocksdb-prebuilds/releases/tag/v${{ needs.check.outputs.version }}"
-                  }
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status*"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": ":white_check_mark:"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "<https://github.com/harperdb/rocksdb-prebuilds/releases/tag/v${{ needs.check.outputs.version }}|GitHub Release>"
+                    }
+                  ]
                 }
               ]
             }
@@ -312,4 +328,47 @@ jobs:
             {
               "url": "https://github.com/harperdb/rocksdb-prebuilds/releases/tag/v${{ needs.check.outputs.version }}",
               "version": "${{ needs.check.outputs.version }}"
+            }
+
+  on-release-failure:
+    if: failure() && !cancelled() && needs.check.outputs.should_build == 'true'
+    name: Release failure
+    needs: [check, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ secrets.SLACK_CI_CHANNEL_ID }}",
+              "text": "RocksDB prebuild failed: v${{ needs.check.outputs.version }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "RocksDB prebuild failed: v${{ needs.check.outputs.version }}"
+                  }
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status*"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": ":x:"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run ${{ github.run_id }}>"
+                    }
+                  ]
+                }
+              ]
             }
