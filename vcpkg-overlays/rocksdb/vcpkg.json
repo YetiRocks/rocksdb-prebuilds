@@ -16,7 +16,7 @@
     }
   ],
   "default-features": [
-    "zlib"
+    "lz4"
   ],
   "features": {
     "bzip2": {

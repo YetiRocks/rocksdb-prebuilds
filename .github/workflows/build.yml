@@ -18,7 +18,7 @@ jobs:
         shell: bash
         run: |
           URL="https://api.github.com/repos/facebook/rocksdb/releases/latest"
-          LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
+          LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
           echo "Latest RocksDB release: $LATEST"
           echo "version=$LATEST" >> $GITHUB_OUTPUT
 
@@ -26,9 +26,9 @@ jobs:
         id: latest-prebuild
         shell: bash
         run: |
-          URL="https://api.github.com/repos/harperdb/rocksdb-prebuilds/releases/latest"
-          LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
-          echo "Latest RocksDB prebuild: $LATEST"
+          URL="https://api.github.com/repos/${{ github.repository }}/releases/latest"
+          LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
+          echo "Latest prebuild: $LATEST"
           echo "version=$LATEST" >> $GITHUB_OUTPUT
 
       - name: Check if we should build
@@ -105,7 +105,7 @@ jobs:
 
           URL="https://github.com/facebook/rocksdb/archive/refs/tags/v${{ needs.check.outputs.version }}.tar.gz"
           echo "Downloading: $URL"
-          curl -L -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" -o rocksdb.tar.gz "$URL"
+          curl -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -o rocksdb.tar.gz "$URL"
           tar -xzf rocksdb.tar.gz
           cp windows/thirdparty.inc "${GITHUB_WORKSPACE}/rocksdb-${{ needs.check.outputs.version }}/"
 
@@ -252,123 +252,13 @@ jobs:
         with:
           path: artifacts
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2
-
-      - name: Upload artifacts to S3
-        run: |
-          aws s3 cp artifacts/ s3://harper-artifacts/rocksdb-prebuilds/v${{ needs.check.outputs.version }}/ --recursive
-
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*.tar.xz
           body: |
-            Automated prebuilds for RocksDB v${{ needs.check.outputs.version }}
+            RocksDB v${{ needs.check.outputs.version }} prebuilds with LZ4 compression.
 
             Release notes: https://github.com/facebook/rocksdb/releases/tag/v${{ needs.check.outputs.version }}
           name: RocksDB v${{ needs.check.outputs.version }}
           tag_name: v${{ needs.check.outputs.version }}
-          token: ${{ secrets.GH_TOKEN }}
-
-  on-release-success:
-    if: success() && !cancelled() && needs.check.outputs.should_build == 'true'
-    name: Release success
-    needs: [check, release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send Slack notification
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload: |
-            {
-              "channel": "${{ secrets.SLACK_CI_CHANNEL_ID }}",
-              "text": "New RocksDB prebuild: v${{ needs.check.outputs.version }}",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "New RocksDB prebuild: v${{ needs.check.outputs.version }}"
-                  }
-                },
-                {
-                  "type": "context",
-                  "elements": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Status*"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": ":white_check_mark:"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "<https://github.com/harperdb/rocksdb-prebuilds/releases/tag/v${{ needs.check.outputs.version }}|GitHub Release>"
-                    }
-                  ]
-                }
-              ]
-            }
-
-      - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          event-type: new-rocksdb-prebuild
-          repository: harperdb/rocksdb-js
-          token: ${{ secrets.GH_TOKEN }}
-          client-payload: |
-            {
-              "url": "https://github.com/harperdb/rocksdb-prebuilds/releases/tag/v${{ needs.check.outputs.version }}",
-              "version": "${{ needs.check.outputs.version }}"
-            }
-
-  on-release-failure:
-    if: failure() && !cancelled() && needs.check.outputs.should_build == 'true'
-    name: Release failure
-    needs: [check, release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send Slack notification
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload: |
-            {
-              "channel": "${{ secrets.SLACK_CI_CHANNEL_ID }}",
-              "text": "RocksDB prebuild failed: v${{ needs.check.outputs.version }}",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "RocksDB prebuild failed: v${{ needs.check.outputs.version }}"
-                  }
-                },
-                {
-                  "type": "context",
-                  "elements": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Status*"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": ":x:"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run ${{ github.run_id }}>"
-                    }
-                  ]
-                }
-              ]
-            }
