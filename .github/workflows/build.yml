@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "30 2 * * *"
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'RocksDB version to build (e.g., 10.10.1). Leave empty for latest.'
+        type: string
+        required: false
 
 jobs:
   check:
@@ -13,34 +18,35 @@ jobs:
       should_build: ${{ steps.check-build.outputs.should_build }}
       version: ${{ steps.latest-rocksdb.outputs.version }}
     steps:
-      - name: Get latest RocksDB release
+      - name: Determine version
         id: latest-rocksdb
         shell: bash
         run: |
-          URL="https://api.github.com/repos/facebook/rocksdb/releases/latest"
-          LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
-          echo "Latest RocksDB release: $LATEST"
-          echo "version=$LATEST" >> $GITHUB_OUTPUT
-
-      - name: Get latest prebuild
-        id: latest-prebuild
-        shell: bash
-        run: |
-          URL="https://api.github.com/repos/${{ github.repository }}/releases/latest"
-          LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
-          echo "Latest prebuild: $LATEST"
-          echo "version=$LATEST" >> $GITHUB_OUTPUT
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "Using input version: ${{ inputs.version }}"
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            URL="https://api.github.com/repos/facebook/rocksdb/releases/latest"
+            LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
+            echo "Latest RocksDB release: $LATEST"
+            echo "version=$LATEST" >> $GITHUB_OUTPUT
+          fi
 
       - name: Check if we should build
         id: check-build
         shell: bash
         run: |
-          if [[ "${{ steps.latest-rocksdb.outputs.version }}" != "${{ steps.latest-prebuild.outputs.version }}" ]]; then
+          if [ -n "${{ inputs.version }}" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "New RocksDB release!"
+            echo "Forced build for version ${{ inputs.version }}"
           else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "No new RocksDB release"
+            URL="https://api.github.com/repos/${{ github.repository }}/releases/latest"
+            CURRENT=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
+            if [[ "${{ steps.latest-rocksdb.outputs.version }}" != "$CURRENT" ]]; then
+              echo "should_build=true" >> $GITHUB_OUTPUT
+            else
+              echo "should_build=false" >> $GITHUB_OUTPUT
+            fi
           fi
 
   build:
