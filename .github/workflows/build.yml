@@ -75,18 +75,6 @@ jobs:
           - runner: ubuntu-24.04-arm
             target: linux-arm64-musl
             triplet: arm64-linux-musl-static
-          - runner: windows-latest
-            target: windows-x64
-            triplet: x64-windows-static
-          - runner: windows-latest
-            target: windows-x64-static-md
-            triplet: x64-windows-static-md
-          - runner: windows-latest
-            target: windows-arm64
-            triplet: arm64-windows-static
-          - runner: windows-latest
-            target: windows-arm64-statid-md
-            triplet: arm64-windows-static-md
     runs-on: ${{ matrix.platform.runner }}
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
@@ -113,8 +101,6 @@ jobs:
           echo "Downloading: $URL"
           curl -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -o rocksdb.tar.gz "$URL"
           tar -xzf rocksdb.tar.gz
-          cp windows/thirdparty.inc "${GITHUB_WORKSPACE}/rocksdb-${{ needs.check.outputs.version }}/"
-
           mkdir dist
 
           for patch in "${GITHUB_WORKSPACE}/vcpkg-overlays/rocksdb/patches"/*.patch; do
@@ -124,7 +110,7 @@ jobs:
             fi
           done
 
-      - name: Build RocksDB (macos/linux glibc/windows)
+      - name: Build RocksDB (macos/linux glibc)
         if: ${{ matrix.platform.target != 'linux-x64-musl' && matrix.platform.target != 'linux-arm64-musl' }}
         timeout-minutes: 60
         env:
@@ -136,14 +122,8 @@ jobs:
           set -e
           set -o pipefail
 
-          if [[ "${{ matrix.platform.target }}" == windows-* ]]; then
-            $VCPKG_ROOT/bootstrap-vcpkg.bat
-            VCPKG_CMD="$VCPKG_ROOT/vcpkg.exe"
-            mv "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg" "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg2"
-          else
-            $VCPKG_ROOT/bootstrap-vcpkg.sh
-            VCPKG_CMD="$VCPKG_ROOT/vcpkg"
-          fi
+          $VCPKG_ROOT/bootstrap-vcpkg.sh
+          VCPKG_CMD="$VCPKG_ROOT/vcpkg"
 
           export REAL_VCPKG_ROOT=$VCPKG_ROOT
           export VCPKG_KEEP_ENV_VARS="REAL_VCPKG_ROOT;ROCKSDB_DIR;VCPKG_CMD;VCPKG_ROOT;VCPKG_TRIPLET"
@@ -154,18 +134,10 @@ jobs:
             --overlay-ports="${GITHUB_WORKSPACE}/vcpkg-overlays" \
             --overlay-triplets="${GITHUB_WORKSPACE}/vcpkg-triplets"; then
             echo '=== Build failed, dumping logs ==='
-            echo '=== buildtrees/detect_compiler/config-${{ matrix.platform.triplet }}-out.log ==='
-            cat ${GITHUB_WORKSPACE}/vcpkg/buildtrees/detect_compiler/config-${{ matrix.platform.triplet }}-out.log 2>/dev/null || echo 'Log file not found'
-            echo '=== buildtrees/detect_compiler/config-${{ matrix.platform.triplet }}-rel-CMakeCache.txt.log ==='
-            cat ${GITHUB_WORKSPACE}/vcpkg/buildtrees/detect_compiler/config-${{ matrix.platform.triplet }}-rel-CMakeCache.txt.log 2>/dev/null || echo 'Log file not found'
-            echo '=== buildtrees/rocksdb/config-${{ matrix.platform.triplet }}-out.log ==='
-            cat ${GITHUB_WORKSPACE}/vcpkg/buildtrees/rocksdb/config-${{ matrix.platform.triplet }}-out.log 2>/dev/null || echo 'Log file not found'
-            echo '=== buildtrees/rocksdb/config-${{ matrix.platform.triplet }}-err.log ==='
-            cat ${GITHUB_WORKSPACE}/vcpkg/buildtrees/rocksdb/config-${{ matrix.platform.triplet }}-err.log 2>/dev/null || echo 'Log file not found'
-            echo '=== buildtrees/rocksdb/install-${{ matrix.platform.triplet }}-dbg-out.log ==='
-            cat ${GITHUB_WORKSPACE}/vcpkg/buildtrees/rocksdb/install-${{ matrix.platform.triplet }}-dbg-out.log 2>/dev/null || echo 'Log file not found'
-            echo '=== buildtrees/rocksdb/install-${{ matrix.platform.triplet }}-dbg-err.log ==='
-            cat ${GITHUB_WORKSPACE}/vcpkg/buildtrees/rocksdb/install-${{ matrix.platform.triplet }}-dbg-err.log 2>/dev/null || echo 'Log file not found'
+            for log in config-${{ matrix.platform.triplet }}-out config-${{ matrix.platform.triplet }}-err install-${{ matrix.platform.triplet }}-dbg-out install-${{ matrix.platform.triplet }}-dbg-err; do
+              echo "=== buildtrees/rocksdb/${log}.log ==="
+              cat ${GITHUB_WORKSPACE}/vcpkg/buildtrees/rocksdb/${log}.log 2>/dev/null || echo 'Log file not found'
+            done
             exit 1
           fi
 
