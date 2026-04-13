@@ -26,10 +26,14 @@ jobs:
             echo "Using input version: ${{ inputs.version }}"
             echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
           else
-            URL="https://api.github.com/repos/facebook/rocksdb/releases/latest"
-            LATEST=$(curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -X GET "$URL" | jq -r '.tag_name' | tr -d 'v')
-            echo "Latest RocksDB release: $LATEST"
-            echo "version=$LATEST" >> $GITHUB_OUTPUT
+            # Get the RocksDB version from the latest rust-librocksdb-sys crate on crates.io.
+            # The crate version encodes the C++ version as: 0.43.0+11.0.4 → 11.0.4
+            # This ensures prebuilts match what the Rust crate actually compiles against.
+            CRATE_VERSION=$(curl -s https://crates.io/api/v1/crates/rust-librocksdb-sys \
+              | jq -r '.crate.max_version')
+            ROCKSDB_VERSION=$(echo "$CRATE_VERSION" | sed 's/.*+//')
+            echo "Latest rust-librocksdb-sys: $CRATE_VERSION (RocksDB $ROCKSDB_VERSION)"
+            echo "version=$ROCKSDB_VERSION" >> $GITHUB_OUTPUT
           fi
 
       - name: Check if we should build
